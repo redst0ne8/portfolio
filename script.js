@@ -107,3 +107,121 @@ function bindExperienceItems(scope = document) {
 }
 
 bindExperienceItems();
+
+
+// ── Development Cards: Collapsible + Carousel ──────────────────────────────
+
+// Image extensions to try, in order
+const IMG_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+
+// Attempt to discover images in a folder by probing filenames 1.ext, 2.ext, ...
+// Since browsers can't list directories, we probe up to MAX images per card.
+const MAX_IMAGES = 20;
+
+async function probeImages(folder) {
+    const found = [];
+    for (let i = 1; i <= MAX_IMAGES; i++) {
+        let hit = null;
+        for (const ext of IMG_EXTS) {
+            const url = `${folder}/${i}.${ext}`;
+            try {
+                const res = await fetch(url, { method: 'HEAD' });
+                if (res.ok) { hit = url; break; }
+            } catch (_) {}
+        }
+        if (hit) {
+            found.push(hit);
+        } else {
+            break; // stop at first gap
+        }
+    }
+    return found;
+}
+
+function buildCarousel(carousel, images) {
+    const track = carousel.querySelector('.dev-carousel-track');
+    const indicators = carousel.querySelector('.dev-carousel-indicators');
+    const prevBtn = carousel.querySelector('.dev-carousel-prev');
+    const nextBtn = carousel.querySelector('.dev-carousel-next');
+
+    if (!images.length) {
+        track.innerHTML = `<div style="padding:2rem;color:rgba(255,255,255,0.35);font-size:0.9rem;width:100%;text-align:center;">No images found in this folder.</div>`;
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        return;
+    }
+
+    // Build slides
+    images.forEach((src, i) => {
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = `Screenshot ${i + 1}`;
+        img.draggable = false;
+        track.appendChild(img);
+    });
+
+    // Build dots
+    images.forEach((_, i) => {
+        const dot = document.createElement('button');
+        dot.className = 'dev-carousel-dot' + (i === 0 ? ' active' : '');
+        dot.setAttribute('aria-label', `Go to image ${i + 1}`);
+        dot.addEventListener('click', () => goTo(i));
+        indicators.appendChild(dot);
+    });
+
+    let current = 0;
+
+    function goTo(index) {
+        current = index;
+        track.style.transform = `translateX(-${100 * current}%)`;
+        indicators.querySelectorAll('.dev-carousel-dot').forEach((d, i) => {
+            d.classList.toggle('active', i === current);
+        });
+        prevBtn.disabled = current === 0;
+        nextBtn.disabled = current === images.length - 1;
+    }
+
+    prevBtn.addEventListener('click', () => { if (current > 0) goTo(current - 1); });
+    nextBtn.addEventListener('click', () => { if (current < images.length - 1) goTo(current + 1); });
+
+    goTo(0);
+}
+
+function initDevCards() {
+    document.querySelectorAll('.dev-card').forEach(card => {
+        if (card.dataset.devInit) return;
+        card.dataset.devInit = 'true';
+
+        const header = card.querySelector('.dev-card-header');
+        const body = card.querySelector('.dev-card-body');
+        const carousel = card.querySelector('.dev-carousel');
+        const folder = carousel.dataset.folder;
+
+        let imagesLoaded = false;
+
+        header.addEventListener('click', async () => {
+            const isOpen = header.getAttribute('aria-expanded') === 'true';
+
+            if (isOpen) {
+                header.setAttribute('aria-expanded', 'false');
+                body.classList.remove('open');
+            } else {
+                header.setAttribute('aria-expanded', 'true');
+                body.classList.add('open');
+
+                // Load images once on first open
+                if (!imagesLoaded) {
+                    imagesLoaded = true;
+                    carousel.querySelector('.dev-carousel-track').innerHTML =
+                        `<div style="padding:2rem;color:rgba(255,255,255,0.35);font-size:0.9rem;width:100%;text-align:center;">Loading images…</div>`;
+                    const images = await probeImages(folder);
+                    carousel.querySelector('.dev-carousel-track').innerHTML = '';
+                    buildCarousel(carousel, images);
+                }
+            }
+        });
+    });
+}
+
+initDevCards();
+
